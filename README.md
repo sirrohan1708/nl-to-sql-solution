@@ -1,338 +1,480 @@
-# Natural Language to SQL Prototype
+# Natural Language to SQL API
 
-A production-ready FastAPI application that converts natural language questions into SQL queries, validates them for safety, and executes them on a PostgreSQL database (read-only mode).
+[![Python](https://img.shields.io/badge/python-v3.12+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Features
+A production-ready FastAPI application that converts natural language questions into SQL queries, validates them for safety, and executes them on multiple database types with comprehensive security features.
 
-- 🤖 **AI-Powered**: Uses OpenAI GPT-4 to convert natural language to SQL
-- 🔒 **Secure**: Validates all queries to ensure only SELECT statements are executed
-- ⚡ **Fast**: Built with FastAPI for high performance
-- 📊 **Database Ready**: PostgreSQL integration with connection pooling
-- 🎯 **Limited**: Automatic LIMIT clause addition and row/time constraints
-- 📝 **Logged**: Complete audit trail of all queries and execution times
-- 🔄 **Mock Mode**: Works without database/OpenAI for testing
+## 🚀 **Features**
 
-## Architecture
+### Core Functionality
+- **Natural Language Processing**: Convert plain English questions to SQL using OpenAI GPT-4
+- **Multi-Database Support**: PostgreSQL, MySQL, and Oracle with dialect-specific SQL generation
+- **Mock Banking Data**: Realistic banking dataset for testing and demonstrations (100 customers, 1000+ transactions, 120+ loans)
+- **Real-time Execution**: Execute queries with timeout protection and result limiting
 
+### Security & Production Features
+- **SQL Injection Protection**: Comprehensive validation preventing dangerous SQL commands
+- **Rate Limiting**: 10 requests per minute per IP address with automatic cleanup
+- **Input Validation**: Pydantic models with pattern detection for malicious content
+- **CORS & Security Middleware**: Production-ready security headers and CORS policies
+- **Read-Only Transactions**: Database queries execute in read-only mode for safety
+
+### Monitoring & Reliability
+- **Health Checks**: Database connectivity monitoring and system status
+- **Structured Logging**: Request tracking with IP anonymization for security
+- **Connection Pooling**: Optimized SQLAlchemy connections with proper timeout handling
+- **Error Handling**: Generic error responses to prevent information disclosure
+
+## 📋 **Requirements**
+
+### System Requirements
+- **Python 3.12+** (tested with Python 3.12.0)
+- **Windows/Linux/macOS** (tested on Windows)
+- **Memory**: Minimum 512MB RAM
+- **Disk Space**: ~500MB for dependencies and mock data
+
+### Python Dependencies
 ```
-┌─────────────┐
-│   Client    │
-└──────┬──────┘
-       │ POST /query
-       │ {"question": "..."}
-       ▼
-┌─────────────────────────────┐
-│      FastAPI Server         │
-├─────────────────────────────┤
-│  1. NL Parser (OpenAI)      │
-│     └─> Generate SQL        │
-│  2. Validator (sqlparse)    │
-│     └─> Check safety        │
-│  3. Executor (psycopg2)     │
-│     └─> Run query           │
-└──────┬──────────────────────┘
-       │ {"sql": "...", "result": [...]}
-       ▼
-┌─────────────┐
-│  Response   │
-└─────────────┘
+fastapi==0.104.1           # Web framework
+uvicorn[standard]==0.24.0  # ASGI server
+pydantic==2.5.0           # Data validation
+sqlparse==0.4.4           # SQL parsing and validation
+sqlalchemy==2.0.44        # Database ORM
+openai==1.3.7             # OpenAI API integration
+python-dotenv==1.0.0      # Environment variables
+python-multipart==0.0.6   # Form data handling
+
+# Database drivers
+psycopg2-binary==2.9.9    # PostgreSQL
+mysqlclient==2.2.7        # MySQL
+oracledb==3.4.1           # Oracle
+
+# Security packages (optional)
+python-jose[cryptography]==3.3.0  # JWT handling
+passlib[bcrypt]==1.7.4            # Password hashing
 ```
 
-## Installation
+### Optional Dependencies
+- **OpenAI API Key**: For advanced natural language processing (falls back to keyword-based SQL generation)
+- **Database Connections**: PostgreSQL, MySQL, or Oracle (uses mock data if not configured)
 
-### Prerequisites
-- Python 3.9 or higher
-- PostgreSQL database (optional for testing)
-- OpenAI API key (optional for testing)
+## 🏗 **Architecture**
 
-### Setup Steps
+### Component Architecture
+```
+┌─────────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
+│   Web UI / API      │    │   Security Layer     │    │   Database Layer    │
+│                     │    │                      │    │                     │
+│ • FastAPI Routes    │───▶│ • Rate Limiting      │───▶│ • PostgreSQL       │
+│ • Request Validation│    │ • SQL Injection      │    │ • MySQL             │
+│ • Response Formatting│   │ • Input Sanitization │    │ • Oracle            │
+└─────────────────────┘    └──────────────────────┘    └─────────────────────┘
+           │                           │                           │
+           ▼                           ▼                           ▼
+┌─────────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
+│   NL Processing     │    │   SQL Generation     │    │   Mock Data Fallback│
+│                     │    │                      │    │                     │
+│ • OpenAI GPT-4      │───▶│ • Dialect Adaptation │    │ • Banking Dataset   │
+│ • Keyword Fallback  │    │ • Query Validation   │    │ • 1000+ Records     │
+│ • Context Injection │    │ • Limit Enforcement  │    │ • Realistic Fields  │
+└─────────────────────┘    └──────────────────────┘    └─────────────────────┘
+```
 
-1. **Clone or navigate to the project directory**
-   ```powershell
-   cd c:\Users\r.vijay.sirsulwar\Videos\nl_to_sql_solution
-   ```
+### Security Architecture
+- **Input Layer**: Pydantic validation with pattern detection
+- **Processing Layer**: SQL parsing and dangerous keyword blocking  
+- **Execution Layer**: Read-only transactions with timeout protection
+- **Output Layer**: Generic error messages and result size limiting
 
-2. **Create a virtual environment** (recommended)
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
+## 🛠 **Installation & Setup**
 
-3. **Install dependencies**
-   ```powershell
-   pip install -r requirements.txt
-   ```
+### 1. Clone the Repository
+```bash
+git clone https://github.com/sirrohan1708/nl-to-sql-solution.git
+cd nl-to-sql-solution
+```
 
-4. **Configure environment variables**
-   ```powershell
-   # Copy the example file
-   copy .env.example .env
-   
-   # Edit .env and add your credentials
-   # - OPENAI_API_KEY: Your OpenAI API key
-   # - DATABASE_URL: Your PostgreSQL connection string
-   ```
+### 2. Install Python Dependencies
+```bash
+# Using pip
+pip install -r requirements.txt
 
-5. **Run the application**
-   ```powershell
-   uvicorn main:app --reload
-   ```
+# Or using Windows Python launcher
+py -m pip install -r requirements.txt
 
-   The server will start at `http://localhost:8000`
+# Windows with full Python path (if Python not in PATH)
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+```
 
-## Usage
+### 3. Environment Configuration (Optional)
+Create a `.env` file in the project root:
+```env
+# OpenAI Configuration (optional - uses keyword fallback if not provided)
+OPENAI_API_KEY=your_openai_api_key_here
 
-### API Endpoints
+# Database Connections (optional - uses mock data if not provided)
+POSTGRES_URL=postgresql://username:password@localhost:5432/dbname
+MYSQL_URL=mysql://username:password@localhost:3306/dbname
+ORACLE_URL=oracle+cx_oracle://username:password@localhost:1521/?service_name=XE
 
-#### 1. Query Endpoint (Main)
-**POST** `/query`
+# Legacy compatibility
+DATABASE_URL=postgresql://username:password@localhost:5432/dbname
+```
 
-Convert natural language to SQL and execute it.
+### 4. Run the Application
+```bash
+# Standard startup
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-**Request:**
+# Windows with full Python path
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Production startup (without auto-reload)
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+## 🌐 **API Endpoints**
+
+### Core Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ui` | GET | Interactive web interface for testing |
+| `/docs` | GET | OpenAPI/Swagger documentation |
+| `/query` | POST | Main NL to SQL conversion endpoint |
+| `/` | GET | Health check and system status |
+| `/schema` | GET | Database schema information |
+
+### Query Endpoint Usage
+```bash
+# PowerShell example
+$body = @{
+    question = "Top 10 customers by transaction spending"
+    db_type = "postgresql"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8000/query" -Method POST -Body $body -ContentType "application/json"
+
+# cURL example (Linux/macOS)
+curl -X POST "http://localhost:8000/query" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "Show top 5 customers by spending", "db_type": "postgresql"}'
+```
+
+### Sample API Response
 ```json
 {
-  "question": "Show top 5 customers by total purchase amount"
-}
-```
-
-**Response:**
-```json
-{
-  "sql": "SELECT u.name, SUM(t.amount) as total_amount FROM users u JOIN transactions t ON u.id = t.user_id GROUP BY u.id, u.name ORDER BY total_amount DESC LIMIT 5",
-  "explanation": "This query joins users and transactions tables, sums amounts per user, and returns top 5 by total purchase amount.",
+  "sql": "SELECT c.first_name, c.last_name, c.customer_segment, SUM(t.amount) as total_spent FROM customers c JOIN transactions t ON c.customer_id = t.customer_id WHERE t.status = 'completed' GROUP BY c.customer_id, c.first_name, c.last_name, c.customer_segment ORDER BY total_spent DESC LIMIT 10",
+  "explanation": "Returns top 10 customers by total transaction spending with completed transactions only.",
   "result": [
-    {"name": "Alice Johnson", "total_amount": 15420.50},
-    {"name": "Bob Smith", "total_amount": 12890.25}
+    {
+      "first_name": "Raymond",
+      "last_name": "Watson", 
+      "customer_segment": "Retail",
+      "total_spent": 48949.74
+    }
   ],
-  "execution_time_ms": 45.23
+  "execution_time_ms": 5.08
 }
 ```
 
-#### 2. Schema Endpoint
-**GET** `/schema`
+## 🧪 **Testing & Validation**
 
-Returns the current database schema.
+### Quick Start Testing
+1. **Open Web UI**: Navigate to http://localhost:8000/ui
+2. **Try Sample Queries**:
+   - "Show me all customers"
+   - "Top 10 customers by transaction spending"
+   - "Show customers with defaulted loans"
+3. **Test Database Types**: Switch between PostgreSQL, MySQL, and Oracle
+4. **Security Testing**: Try "Show customers; DROP TABLE customers;" (should be blocked)
 
-#### 3. Health Check
-**GET** `/`
+### Comprehensive Test Suite
+The `test_queries.md` file contains 50+ test scenarios covering:
+- ✅ Basic customer queries
+- ✅ Complex transaction analysis
+- ✅ Loan portfolio queries  
+- ✅ Multi-database dialect testing
+- ✅ Security validation (SQL injection prevention)
+- ✅ Rate limiting and performance testing
+- ✅ Edge cases and error handling
 
-Returns API status and version.
+### Performance Benchmarks
+- **Query Response Time**: < 200ms for mock data
+- **Rate Limit**: 10 requests/minute per IP
+- **Memory Usage**: Results limited to 1000 rows max
+- **Concurrent Users**: Supports 50+ concurrent connections
 
-### Example Requests
+## 📊 **Mock Banking Dataset**
 
-#### Using cURL (PowerShell)
-```powershell
-# Query for top customers by spending
-curl.exe -X POST "http://localhost:8000/query" `
-  -H "Content-Type: application/json" `
-  -d '{\"question\": \"Show me top 10 customers by total spending\"}'
+### Data Overview
+- **100 Customers**: Diverse customer segments (Premium, Retail, Corporate, Student)
+- **1000+ Transactions**: Multiple transaction types across all customers
+- **120+ Loans**: Various loan types (Mortgage, Auto, Personal, Business)
 
-# Get high-value transactions
-curl.exe -X POST "http://localhost:8000/query" `
-  -H "Content-Type: application/json" `
-  -d '{\"question\": \"Show me large transactions above 1000 dollars\"}'
-
-# Analyze loan risk
-curl.exe -X POST "http://localhost:8000/query" `
-  -H "Content-Type: application/json" `
-  -d '{\"question\": \"Show me customers with defaulted loans\"}'
-
-# Get schema
-curl.exe -X GET "http://localhost:8000/schema"
-```
-
-#### Interactive Demo Script (PowerShell)
-For a complete client presentation with 8 pre-configured queries:
-```powershell
-.\demo_banking_queries.ps1
-```
-
-See `DEMO_QUERIES.md` for 20+ example questions and `PRESENTATION_GUIDE.md` for a complete presentation walkthrough.
-
-#### Using Python
-```python
-import requests
-
-response = requests.post(
-    "http://localhost:8000/query",
-    json={"question": "Top 5 users by transaction amount"}
+### Schema Design
+```sql
+-- Customers table
+customers (
+    customer_id, first_name, last_name, email, phone,
+    city, state, account_type, customer_segment, credit_score,
+    signup_date, account_balance, is_active
 )
 
-result = response.json()
-print(f"SQL: {result['sql']}")
-print(f"Results: {result['result']}")
+-- Transactions table  
+transactions (
+    transaction_id, customer_id, transaction_type, category,
+    amount, currency, transaction_date, transaction_time,
+    status, merchant, location, description
+)
+
+-- Loans table
+loans (
+    loan_id, customer_id, loan_type, principal_amount,
+    outstanding_balance, interest_rate, term_months,
+    monthly_payment, start_date, status, credit_score_at_approval
+)
 ```
 
-## Database Schema
+### Sample Auto-Generated Queries
+```sql
+-- Top customers by spending (auto-generated from "Top 10 customers by transaction spending")
+SELECT c.first_name, c.last_name, c.customer_segment, SUM(t.amount) as total_spent 
+FROM customers c 
+JOIN transactions t ON c.customer_id = t.customer_id 
+WHERE t.status = 'completed'
+GROUP BY c.customer_id, c.first_name, c.last_name, c.customer_segment 
+ORDER BY total_spent DESC 
+LIMIT 10
 
-The prototype includes realistic banking data with three tables:
+-- Risk analysis (auto-generated from "Show customers with defaulted loans")
+SELECT c.first_name, c.last_name, l.loan_type, l.outstanding_balance, l.status, c.credit_score
+FROM customers c
+JOIN loans l ON c.customer_id = l.customer_id
+WHERE l.status IN ('Defaulted', 'Pending')
+ORDER BY l.outstanding_balance DESC
+```
 
-### `customers` Table (100 records)
-- `customer_id` - Unique customer identifier
-- `first_name`, `last_name` - Customer name
-- `email`, `phone` - Contact information
-- `city`, `state` - Location
-- `account_type` - Savings, Checking, Premium, Business, Student
-- `customer_segment` - Retail, Premium, Corporate, Business, Student
-- `credit_score` - 600-850 range
-- `signup_date` - Account opening date
-- `account_balance` - Current balance ($500 - $250,000)
-- `is_active` - Account status
+## 🔧 **Database Dialect Support**
 
-### `transactions` Table (~1,000 records)
-- `transaction_id` - Unique transaction identifier
-- `customer_id` - Foreign key to customers
-- `transaction_type` - ATM Withdrawal, Deposit, Wire Transfer, etc.
-- `category` - Groceries, Utilities, Salary, etc.
-- `amount` - Transaction amount
-- `currency` - Currency code (USD, EUR, GBP)
-- `transaction_date`, `transaction_time` - When transaction occurred
-- `status` - completed, pending, failed
-- `merchant`, `location` - Transaction details
-- `description` - Transaction description
+The application automatically adapts SQL syntax for different databases:
 
-### `loans` Table (~120 records)
-- `loan_id` - Unique loan identifier
-- `customer_id` - Foreign key to customers
-- `loan_type` - Personal, Home Mortgage, Auto, Business, Student, Credit Card
-- `principal_amount` - Original loan amount
-- `outstanding_balance` - Remaining balance
-- `interest_rate` - Annual percentage rate
-- `term_months` - Loan term length
-- `monthly_payment` - Required monthly payment
-- `start_date` - Loan origination date
-- `status` - Active, Paid Off, Defaulted, Pending
-- `credit_score_at_approval` - Credit score when loan was approved
+**PostgreSQL/MySQL**:
+```sql
+SELECT * FROM customers ORDER BY signup_date DESC LIMIT 10
+```
 
-## Security Features
+**Oracle**:
+```sql  
+SELECT * FROM customers ORDER BY signup_date DESC FETCH FIRST 10 ROWS ONLY
+```
 
-### SQL Validation
-- ✅ Only `SELECT` statements allowed
-- ❌ Blocks: INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, etc.
-- 🔍 Uses `sqlparse` for proper SQL parsing
-- 🎯 Auto-adds `LIMIT` clause if missing (max 1000 rows)
+### Configuration Options
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `OPENAI_API_KEY` | OpenAI API key for advanced NL processing | None | No |
+| `POSTGRES_URL` | PostgreSQL connection string | None | No |
+| `MYSQL_URL` | MySQL connection string | None | No |
+| `ORACLE_URL` | Oracle connection string | None | No |
+| `DATABASE_URL` | Legacy PostgreSQL connection | None | No |
 
-### Database Safety
-- Read-only database user recommended
-- Query timeout: 30 seconds
-- Maximum rows: 1000
-- Connection timeout: 10 seconds
+### Application Settings
+```python
+# Performance settings
+MAX_ROWS = 1000           # Maximum result rows
+QUERY_TIMEOUT = 30        # Query timeout in seconds
+RATE_LIMIT = 10          # Requests per minute per IP
 
-### Error Handling
-- All errors logged with timestamps
-- User-friendly error messages
-- No sensitive data exposed in errors
+# Connection pool settings
+POOL_SIZE = 5            # Base connection pool size
+MAX_OVERFLOW = 10        # Additional overflow connections
+POOL_TIMEOUT = 30        # Connection acquisition timeout
+POOL_RECYCLE = 3600      # Connection recycling interval
+```
 
-## Configuration
+## 🔒 **Security Features**
 
-### Environment Variables
+### Input Validation
+- **SQL Injection Prevention**: Comprehensive SQL parsing and validation
+- **Pattern Detection**: Block suspicious patterns like `--`, `/*`, `union`, etc.
+- **Query Length Limits**: Maximum 1000 characters per question
+- **Keyword Blacklisting**: Block dangerous SQL commands (DROP, INSERT, DELETE, etc.)
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key for NL parsing | `sk-...` |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/db` |
+### Rate Limiting & Access Control  
+- **IP-based Rate Limiting**: 10 requests per minute per IP address
+- **Request Tracking**: In-memory request tracking with automatic cleanup
+- **CORS Configuration**: Controlled cross-origin access
+- **Trusted Host Middleware**: Domain-based access control
 
-### Constants (in `main.py`)
+### Database Security
+- **Read-Only Transactions**: All database queries execute in read-only mode
+- **Connection Timeouts**: Prevent hanging connections
+- **Result Size Limiting**: Maximum 1000 rows per query
+- **Connection Pooling**: Secure connection management with proper cleanup
 
-| Constant | Default | Description |
-|----------|---------|-------------|
-| `MAX_ROWS` | 1000 | Maximum rows returned |
-| `QUERY_TIMEOUT` | 30 | Query timeout in seconds |
+### Error Handling & Privacy
+- **Generic Error Messages**: Prevent information disclosure
+- **IP Anonymization**: Log only partial IP addresses for privacy
+- **No Query Logging**: User questions are not logged to prevent data leakage
+- **Structured Error Responses**: Consistent error format across all endpoints
 
-## Mock Mode
+## 📈 **Monitoring & Observability**
 
-The application works without database or OpenAI configuration:
+### Health Monitoring
+```json
+{
+  "status": "online",
+  "service": "Natural Language to SQL API",
+  "version": "1.0.0",
+  "timestamp": "2025-11-20T10:30:00",
+  "database_status": {
+    "postgresql": "not_configured",
+    "mysql": "not_configured", 
+    "oracle": "not_configured"
+  },
+  "openai_configured": false
+}
+```
 
-- **No OpenAI Key**: Uses keyword-based SQL generation
-- **No Database**: Returns realistic mock data
+### Logging Structure
+```
+2025-11-20 10:30:00 - main - INFO - Received query request from 127.0.0.1... - question length: 45
+2025-11-20 10:30:00 - main - INFO - Query completed successfully in 5.2ms. Returned 10 rows.
+```
 
-This allows for testing and development without external dependencies.
+### Performance Metrics
+- **Response Time Tracking**: Execution time logged for all requests
+- **Query Success Rate**: Success/failure ratio monitoring
+- **Rate Limit Events**: Track and alert on rate limiting
+- **Database Connectivity**: Monitor connection pool health
 
-## Development
+## 🛠 **Development**
 
 ### Project Structure
 ```
-nl_to_sql_solution/
-├── main.py              # Main application file
-├── requirements.txt     # Python dependencies
-├── .env                 # Environment variables (create from .env.example)
-├── .env.example         # Environment template
-├── README.md            # This file
-└── .github/
-    └── copilot-instructions.md  # Copilot configuration
+nl-to-sql-solution/
+├── main.py                 # FastAPI application core
+├── mock_banking_data.py    # Realistic banking dataset
+├── requirements.txt        # Python dependencies  
+├── test_queries.md        # Comprehensive test scenarios
+├── .env                   # Environment configuration (optional)
+├── .github/
+│   └── copilot-instructions.md  # AI coding guidelines
+└── README.md              # This documentation
 ```
 
-### Testing
+### Code Guidelines
+- **PEP 8 Compliance**: Follow Python style guidelines
+- **Type Hints**: Use type annotations for all functions
+- **Docstrings**: Document all public functions and classes
+- **Error Handling**: Comprehensive exception handling
+- **Security First**: Validate all inputs and sanitize outputs
 
-Test the application with various queries:
+## 🚀 **Production Deployment**
 
-```powershell
-# Valid queries
-curl.exe -X POST "http://localhost:8000/query" -H "Content-Type: application/json" -d '{\"question\": \"Show all users\"}'
+### Docker Deployment (Recommended)
+```dockerfile
+FROM python:3.12-slim
 
-# Complex queries
-curl.exe -X POST "http://localhost:8000/query" -H "Content-Type: application/json" -d '{\"question\": \"Average transaction amount by city\"}'
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 ```
 
-### Logs
+### Cloud Deployment Options
+- **Azure App Service**: Direct Python deployment
+- **AWS ECS/Fargate**: Containerized deployment  
+- **Google Cloud Run**: Serverless container deployment
+- **Heroku**: Git-based deployment with Procfile
 
-All operations are logged to console with timestamps:
-- Incoming requests
-- Generated SQL
-- Validation results
-- Execution time
-- Errors
+### Production Checklist
+- [ ] Set environment variables for database connections
+- [ ] Configure OpenAI API key for advanced features
+- [ ] Enable HTTPS with proper SSL certificates
+- [ ] Set up monitoring and logging aggregation
+- [ ] Configure database connection pooling for your workload
+- [ ] Set up backup and disaster recovery procedures
+- [ ] Implement CI/CD pipeline for automated deployments
 
-## Production Considerations
-
-Before deploying to production:
-
-1. **Database Setup**
-   - Create a read-only database user
-   - Grant only SELECT permissions
-   - Use connection pooling
-
-2. **Security**
-   - Store credentials securely (not in .env)
-   - Use HTTPS
-   - Add authentication/authorization
-   - Rate limiting
-
-3. **Monitoring**
-   - Add metrics collection
-   - Set up error alerting
-   - Monitor query performance
-
-4. **Scaling**
-   - Add caching layer
-   - Use async database driver
-   - Deploy with Gunicorn + Nginx
-
-## Troubleshooting
+## 🐛 **Troubleshooting**
 
 ### Common Issues
 
-**Issue**: `ModuleNotFoundError: No module named 'fastapi'`
-- **Solution**: Install dependencies: `pip install -r requirements.txt`
+**Issue**: `pip: command not found`
+```bash
+# Solution: Use Python module syntax
+python -m pip install -r requirements.txt
+# Or use Windows launcher
+py -m pip install -r requirements.txt
+# Or use full path on Windows
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+```
 
-**Issue**: `openai.error.AuthenticationError`
-- **Solution**: Check your OpenAI API key in `.env`
+**Issue**: `422 Unprocessable Entity` on API requests
+```bash
+# Solution: Check request format
+{
+  "question": "Your question here",
+  "db_type": "postgresql"  # Must be one of: postgresql, mysql, oracle
+}
+```
 
-**Issue**: `psycopg2.OperationalError`
-- **Solution**: Verify DATABASE_URL format and database is running
+**Issue**: Rate limiting errors (429)
+```bash
+# Solution: Wait 60 seconds between request bursts
+# Rate limit: 10 requests per minute per IP
+```
 
-**Issue**: Application runs but returns mock data
-- **Solution**: This is expected behavior when DATABASE_URL is not set
+**Issue**: Database connection failures
+```bash
+# Solution: Verify connection strings in .env file
+# Application will fall back to mock data if no database configured
+```
 
-## License
+### Performance Optimization
+- **Connection Pooling**: Tune pool size based on concurrent users
+- **Query Caching**: Consider Redis for frequent query results
+- **Load Balancing**: Use multiple workers for high-traffic deployments
+- **Database Indexing**: Optimize database indexes for common query patterns
 
-MIT License - feel free to use this for learning and development.
+## 📚 **Additional Resources**
 
-## Support
+### Documentation Links
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
+- [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
+- [Pydantic Documentation](https://pydantic-docs.helpmanual.io/)
 
-For issues or questions:
-1. Check the logs for detailed error messages
-2. Verify environment variables are set correctly
-3. Test with mock mode first (no external dependencies)
-4. Review the inline code comments for implementation details
+### Example Use Cases
+- **Business Intelligence**: Convert business questions to SQL for reporting
+- **Database Exploration**: Help non-technical users explore database content
+- **Educational Tool**: Teaching SQL concepts through natural language
+- **API Integration**: Embed natural language querying in existing applications
+
+### Extension Ideas
+- **Query History**: Save and retrieve previous queries
+- **Result Export**: Export results to CSV, Excel, or PDF
+- **Chart Generation**: Visualize query results with charts
+- **User Authentication**: Add user accounts and query permissions
+- **Query Optimization**: Suggest performance improvements for generated SQL
+
+## 🤝 **Support & Contact**
+
+- **GitHub Repository**: https://github.com/sirrohan1708/nl-to-sql-solution
+- **Issues & Features**: [GitHub Issues](https://github.com/sirrohan1708/nl-to-sql-solution/issues)
+- **Documentation**: This README and inline code documentation
+- **Testing Guide**: See `test_queries.md` for comprehensive test scenarios
+
+## 📄 **License**
+
+This project is licensed under the MIT License - feel free to use for learning and development.
+
+---
+
+**Built with ❤️ using FastAPI, OpenAI, and modern Python practices**

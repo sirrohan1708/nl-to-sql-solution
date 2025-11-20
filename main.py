@@ -26,9 +26,11 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from enum import Enum
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse  # added for simple UI
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from pydantic import BaseModel, Field, validator
 import sqlparse
 from sqlparse.sql import Statement
 from sqlparse.tokens import Keyword, DML
@@ -56,8 +58,45 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Natural Language to SQL API",
     description="Convert natural language questions to SQL queries and execute them safely",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/docs",  # Swagger UI
+    redoc_url="/redoc"  # ReDoc
 )
+
+# Add security middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Add your frontend URLs
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["localhost", "127.0.0.1", "*.yourdomain.com"]
+)
+
+# Request tracking for basic rate limiting
+from collections import defaultdict, deque
+import time as time_module
+request_tracker = defaultdict(lambda: deque())
+
+def rate_limit_check(client_ip: str) -> bool:
+    """Basic rate limiting: max 10 requests per minute per IP"""
+    now = time_module.time()
+    client_requests = request_tracker[client_ip]
+    
+    # Remove old requests (older than 1 minute)
+    while client_requests and client_requests[0] < now - 60:
+        client_requests.popleft()
+    
+    # Check if under limit
+    if len(client_requests) >= 10:
+        return False
+    
+    client_requests.append(now)
+    return True
 
 # Import mock banking data
 from mock_banking_data import MOCK_CUSTOMERS, MOCK_TRANSACTIONS, MOCK_LOANS
@@ -128,7 +167,20 @@ def get_engine(db_type: str) -> Optional[Engine]:
     if not url:
         return None
 
-    engine = create_engine(url, pool_pre_ping=True, future=True)
+    # Enhanced connection pool settings for production
+    engine = create_engine(
+        url, 
+        pool_pre_ping=True, 
+        future=True,
+        pool_size=5,  # Max connections in pool
+        max_overflow=10,  # Max overflow connections
+        pool_timeout=30,  # Timeout to get connection from pool
+        pool_recycle=3600,  # Recycle connections after 1 hour
+        connect_args={
+            "connect_timeout": 10,  # Connection timeout
+            "application_name": "nl-to-sql-api"
+        } if db_type == DatabaseType.POSTGRES else {}
+    )
     _ENGINE_CACHE[db_type] = engine
     return engine
 
@@ -153,8 +205,20 @@ def adapt_sql_for_dialect(sql: str, db_type: str) -> str:
 
 class QueryRequest(BaseModel):
     """Request model for natural language query"""
-    question: str
+    question: str = Field(..., min_length=1, max_length=1000, description="Natural language question")
     db_type: Optional[DatabaseType] = DatabaseType.POSTGRES
+
+    @validator('question')
+    def validate_question(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Question cannot be empty')
+        # Basic injection attempt detection
+        suspicious_patterns = ['--', '/*', '*/', 'xp_', 'sp_', ';', 'union', 'script']
+        v_lower = v.lower()
+        for pattern in suspicious_patterns:
+            if pattern in v_lower:
+                raise ValueError(f'Question contains suspicious content: {pattern}')
+        return v.strip()
 
     class Config:
         json_schema_extra = {
@@ -505,13 +569,27 @@ def execute_sql(query: str, db_type: str) -> List[Dict[str, Any]]:
 
     try:
         with engine.connect() as conn:
-            result = conn.execute(text(query))
+            # Set query timeout and read-only mode for security
+            with conn.begin():
+                conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
+            result = conn.execute(text(query).execution_options(
+                autocommit=True, 
+                compiled_cache={},
+                stream_results=True
+            ))
             rows = [dict(row) for row in result]
             logger.info(f"Query executed. Returned {len(rows)} rows.")
+            
+            # Additional safety: limit result size in memory
+            if len(rows) > MAX_ROWS:
+                logger.warning(f"Result truncated from {len(rows)} to {MAX_ROWS} rows")
+                rows = rows[:MAX_ROWS]
+            
             return rows
     except Exception as e:
         logger.error(f"Database execution error: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        # Don't expose internal DB details to client
+        raise HTTPException(status_code=500, detail="Database query failed")
 
 
 def _execute_mock_query(query: str) -> List[Dict[str, Any]]:
@@ -688,25 +766,42 @@ def _execute_mock_query(query: str) -> List[Dict[str, Any]]:
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """Health check endpoint with database connectivity status"""
+    db_status = {}
+    for db_type in ["postgresql", "mysql", "oracle"]:
+        engine = get_engine(db_type)
+        if engine:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                db_status[db_type] = "connected"
+            except:
+                db_status[db_type] = "connection_failed"
+        else:
+            db_status[db_type] = "not_configured"
+    
     return {
         "status": "online",
         "service": "Natural Language to SQL API",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "database_status": db_status,
+        "openai_configured": bool(OPENAI_API_KEY)
     }
 
 
 @app.post("/query", response_model=QueryResponse)
-async def query_endpoint(request: QueryRequest):
+async def query_endpoint(request: QueryRequest, req: Request):
     """
     Main endpoint: Convert natural language to SQL and execute it.
     
     Process:
-    1. Generate SQL from natural language using OpenAI
-    2. Validate SQL for safety (only SELECT allowed)
-    3. Add LIMIT if missing
-    4. Execute on PostgreSQL database
-    5. Return results with explanation
+    1. Rate limiting check
+    2. Generate SQL from natural language using OpenAI
+    3. Validate SQL for safety (only SELECT allowed)
+    4. Add LIMIT if missing
+    5. Execute on chosen database
+    6. Return results with explanation
     
     Args:
         request: QueryRequest with natural language question
@@ -714,11 +809,21 @@ async def query_endpoint(request: QueryRequest):
     Returns:
         QueryResponse with SQL, explanation, results, and execution time
     """
+    # Extract client IP from request
+    client_ip = req.client.host if req.client else "unknown"
+    
+    # Rate limiting
+    if not rate_limit_check(client_ip):
+        raise HTTPException(
+            status_code=429, 
+            detail="Rate limit exceeded. Maximum 10 requests per minute."
+        )
+    
     start_time = time.time()
     
     try:
-        # Log incoming request
-        logger.info(f"Received query request: {request.question}")
+        # Log incoming request (without PII)
+        logger.info(f"Received query request from {client_ip[:8]}... - question length: {len(request.question)}")
         
         # Step 1: Generate SQL from natural language
         sql_result = generate_sql_from_text(request.question, SCHEMA)
@@ -770,7 +875,7 @@ async def query_endpoint(request: QueryRequest):
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error: {str(e)}"
+            detail="Internal server error occurred"
         )
 
 
